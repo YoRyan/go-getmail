@@ -1,22 +1,13 @@
-FROM golang:alpine as build
-RUN apk --no-cache --update upgrade && apk --no-cache add git build-base
+FROM golang:1-alpine AS build
+RUN apk add --no-cache ca-certificates
+WORKDIR /src
+COPY . .
+RUN go mod download
+ENV CGO_ENABLED=0 GOOS=linux
+RUN go build -a -installsuffix cgo -o ./out/go-getmail .
 
-ADD . /go/go-getmail
-WORKDIR /go/go-getmail
-
-RUN go get
-RUN go build -ldflags="-s -w"
-RUN chmod +x go-getmail
-
-FROM ghcr.io/mback2k/docker-alpine:latest
-RUN apk --no-cache --update upgrade && apk --no-cache add ca-certificates
-
-COPY --from=build /go/go-getmail/go-getmail /usr/local/bin/go-getmail
-
-RUN addgroup -g 993 -S serve
-RUN adduser -u 993 -h /data -S -D -G serve serve
-
-WORKDIR /data
-USER serve
-
-CMD [ "/usr/local/bin/go-getmail" ]
+FROM scratch
+COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+COPY --from=build /src/out/go-getmail /main
+USER 10001
+ENTRYPOINT ["/main"]
